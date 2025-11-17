@@ -299,10 +299,10 @@ def apply_styling():
         background: var(--bg-card);
         padding: 1rem;
         border-radius: 8px;
-        color: var(--text-secondary);
-        font-size: 0.95rem;
-        line-height: 1.6;
-        font-weight: 500;
+        color: var(--text-primary);
+        font-size: 1.05rem;
+        line-height: 1.7;
+        font-weight: 600;
         margin: 1rem 0;
     }
 
@@ -317,15 +317,15 @@ def apply_styling():
 
     .summary-title {
         color: var(--text-primary);
-        font-size: 1rem;
+        font-size: 1.05rem;
         font-weight: 600;
         margin-bottom: 0.75rem;
     }
 
     .summary-content {
         color: var(--text-secondary);
-        font-size: 0.9rem;
-        line-height: 1.6;
+        font-size: 0.95rem;
+        line-height: 1.7;
     }
 
     /* Buttons */
@@ -430,11 +430,11 @@ def main():
             
             with col1:
                 niche = st.text_input("Content Niche", placeholder="e.g., Fitness, Beauty, Tech...")
-                language_script = st.selectbox("Script Language", ["Hinglish", "English", "Hindi"])
-                writing_style = st.selectbox("Writing Style", ["Let AI Decide", "Professional", "Casual"])
-            
+                language_script = st.text_input("Script Language", value="Hinglish", placeholder="e.g., Hinglish, English, Hindi")
+                writing_style = st.text_input("Writing Style", value="Let AI Decide", placeholder="e.g., Let AI Decide, Professional, Casual")
+
             with col2:
-                language_text = st.selectbox("Text Language", ["English", "Hindi", "Hinglish"])
+                language_text = st.text_input("Text Language", value="English", placeholder="e.g., English, Hindi, Hinglish")
                 location = st.text_input("Target Location", value="India")
                 reels_count = st.slider("Reels to Analyze", 10, 50, 25, 5)
             
@@ -472,49 +472,30 @@ def main():
             elapsed = datetime.now() - params['start_time']
             elapsed_seconds = int(elapsed.total_seconds())
 
-            # Display progress indicator
-            st.markdown("---")
-            st.markdown("### ⏳ Research in Progress")
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Time Elapsed", f"{elapsed_seconds // 60}m {elapsed_seconds % 60}s")
-            with col2:
-                st.metric("Status", "🔄 Polling for updates...")
-            with col3:
-                if params['initial_timestamp']:
-                    st.metric("Initial Timestamp", str(params['initial_timestamp'])[:19])
-
             # Check if data is ready
             data_ready, new_timestamp = check_data_ready(params['initial_timestamp'])
 
             if data_ready:
                 st.session_state.checking_data = False
                 st.session_state.show_results = True
-                st.balloons()
                 st.success(f"✅ Research complete! New data generated at: {new_timestamp}")
-                time.sleep(2)
+                time.sleep(1)
                 st.rerun()
             else:
                 # Continue polling if within timeout
                 if elapsed_seconds < 600:  # 10 minutes timeout
-                    progress_bar = st.progress(min(elapsed_seconds / 600, 1.0))
-                    st.info(f"⏳ Checking for new data... Next check in 10 seconds")
-
-                    # Show current timestamp for debugging
-                    with st.expander("🔍 Debug Info"):
-                        st.write(f"**Initial Timestamp:** {params['initial_timestamp']}")
-                        st.write(f"**Current Timestamp:** {new_timestamp}")
-                        st.write(f"**Timestamps Match:** {str(params['initial_timestamp']) == str(new_timestamp)}")
-
-                    # Manual stop button
-                    col1, col2, col3 = st.columns([2, 1, 2])
+                    # Compact progress indicator
+                    st.markdown("---")
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.info(f"⏳ Research in progress... Time elapsed: {elapsed_seconds // 60}m {elapsed_seconds % 60}s")
                     with col2:
-                        if st.button("⏸️ Stop Polling", use_container_width=True):
+                        if st.button("⏸️ Stop", use_container_width=True):
                             st.session_state.checking_data = False
                             st.session_state.show_results = True
-                            st.warning("Polling stopped manually. You can refresh to see current data.")
                             st.rerun()
+
+                    progress_bar = st.progress(min(elapsed_seconds / 600, 1.0))
 
                     # Wait and rerun
                     time.sleep(10)
@@ -522,7 +503,7 @@ def main():
                 else:
                     st.session_state.checking_data = False
                     st.session_state.show_results = True
-                    st.warning("⚠️ Research is taking longer than expected. Showing current data. Please refresh if needed.")
+                    st.warning("⚠️ Research is taking longer than expected. Showing current data.")
         
         # Refresh button
         if 'research_params' in st.session_state:
@@ -537,13 +518,133 @@ def main():
             reels_df = fetch_sheet_data("TopPerformingReels")
             scripts_df = fetch_sheet_data("Top3ReelsIdeas")
             
-            # Tabs - Default to Reels
-            tab1, tab2, tab3, tab4 = st.tabs(["🎬 Top Reels", "✨ Script Ideas", "📊 Summary", "📈 Raw Data"])
+            # Tabs - Default to Script Ideas
+            tab1, tab2, tab3, tab4 = st.tabs(["✨ Script Ideas", "🎬 Top Reels", "📊 Summary", "📈 Raw Data"])
 
-            # Top Reels Tab (First/Default)
+            # Script Ideas Tab (First/Default)
             with tab1:
-                if reels_df is not None and not reels_df.empty:
-                    for idx, row in reels_df.head(10).iterrows():
+                if scripts_df is not None and not scripts_df.empty:
+                    for idx, row in scripts_df.iterrows():
+                        # Get data
+                        rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
+                        script_title = get_column_value(row, ['script_title', 'Script Title', 'title'], 'Untitled')
+                        topic_title = get_column_value(row, ['topic_title', 'Topic Title', 'topic'], script_title)
+                        viral_score = get_column_value(row, ['viral_potential_score', 'Viral Potential Score'], None)
+                        audience = get_column_value(row, ['target_audience', 'Target Audience'], 'N/A')
+                        trigger = get_column_value(row, ['emotional_trigger', 'Emotional Trigger'], 'N/A')
+                        duration = get_column_value(row, ['estimated_duration', 'Duration'], 'N/A')
+                        full_text = get_column_value(row, ['full_text', 'Full Text', 'script_full_text'], '')
+
+                        # Card container
+                        st.markdown('<div class="script-card">', unsafe_allow_html=True)
+
+                        # Header with title and score
+                        col_title, col_score = st.columns([4, 1])
+                        with col_title:
+                            st.markdown(f'<div class="script-title-text">#{rank} · {script_title}</div>', unsafe_allow_html=True)
+                        with col_score:
+                            if viral_score:
+                                st.markdown(f'<div class="script-score">Score: {viral_score}/100</div>', unsafe_allow_html=True)
+
+                        # Meta information
+                        st.markdown(f'''
+                            <div class="script-meta">
+                                <div class="meta-item"><span class="meta-label">Duration:</span>{duration}</div>
+                                <div class="meta-item"><span class="meta-label">Audience:</span>{str(audience)[:60]}</div>
+                                <div class="meta-item"><span class="meta-label">Trigger:</span>{str(trigger)[:60]}</div>
+                            </div>
+                        ''', unsafe_allow_html=True)
+
+                        # Script preview (bold and larger - full text)
+                        if full_text:
+                            st.markdown(f'<div class="script-text">{full_text}</div>', unsafe_allow_html=True)
+
+                        # View Details button
+                        with st.expander("📄 View Complete Details"):
+                            # Topic and titles
+                            st.markdown("### Script Information")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Topic:** {topic_title}")
+                                st.write(f"**Script Title:** {script_title}")
+                                if viral_score:
+                                    st.write(f"**Viral Potential Score:** {viral_score}/100")
+                            with col2:
+                                st.write(f"**Duration:** {duration}")
+                                st.write(f"**Target Audience:** {audience}")
+                                st.write(f"**Emotional Trigger:** {trigger}")
+
+                            # Full script
+                            if full_text:
+                                st.markdown("### Full Script")
+                                st.markdown(f'<div class="script-text">{full_text}</div>', unsafe_allow_html=True)
+
+                            # Script components
+                            hook = get_column_value(row, ['script_hook', 'Hook'], None)
+                            buildup = get_column_value(row, ['script_buildup', 'Buildup'], None)
+                            value = get_column_value(row, ['script_value', 'Value'], None)
+                            cta = get_column_value(row, ['script_cta', 'CTA'], None)
+
+                            if any([hook, buildup, value, cta]):
+                                st.markdown("### Script Structure")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if hook:
+                                        st.markdown(f"**🎣 Hook:**\n\n{hook}")
+                                    if buildup:
+                                        st.markdown(f"**📈 Buildup:**\n\n{buildup}")
+                                with col2:
+                                    if value:
+                                        st.markdown(f"**💎 Value:**\n\n{value}")
+                                    if cta:
+                                        st.markdown(f"**🎯 CTA:**\n\n{cta}")
+
+                            # Additional details
+                            gap = get_column_value(row, ['content_gap_addressed', 'Content Gap'], None)
+                            why_works = get_column_value(row, ['why_this_works', 'Why This Works'], None)
+
+                            if gap or why_works:
+                                st.markdown("### Strategy Insights")
+                                if gap:
+                                    st.markdown(f"**Content Gap Addressed:**\n\n{gap}")
+                                if why_works:
+                                    st.markdown(f"**Why This Works:**\n\n{why_works}")
+
+                            # Caption
+                            caption_full = get_column_value(row, ['caption_full', 'Caption'], None)
+                            if caption_full:
+                                st.markdown("### Caption")
+                                st.markdown(f'<div style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;">{caption_full}</div>', unsafe_allow_html=True)
+
+                            # Hashtags
+                            hashtags_all = get_column_value(row, ['hashtags_all', 'Hashtags All'], None)
+                            hashtags_primary = get_column_value(row, ['hashtags_primary', 'Primary Hashtags'], None)
+                            hashtags_secondary = get_column_value(row, ['hashtags_secondary', 'Secondary Hashtags'], None)
+                            hashtags_niche = get_column_value(row, ['hashtags_niche_specific', 'Niche Hashtags'], None)
+                            hashtags_trending = get_column_value(row, ['hashtags_trending', 'Trending Hashtags'], None)
+
+                            if any([hashtags_all, hashtags_primary, hashtags_secondary, hashtags_niche, hashtags_trending]):
+                                st.markdown("### Hashtags")
+                                if hashtags_primary:
+                                    st.markdown(f"**Primary:** {hashtags_primary}")
+                                if hashtags_secondary:
+                                    st.markdown(f"**Secondary:** {hashtags_secondary}")
+                                if hashtags_niche:
+                                    st.markdown(f"**Niche Specific:** {hashtags_niche}")
+                                if hashtags_trending:
+                                    st.markdown(f"**Trending:** {hashtags_trending}")
+                                if hashtags_all:
+                                    st.markdown(f"**All Hashtags:** {hashtags_all}")
+
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info("✨ No script ideas available yet. Data will appear here once the workflow completes.")
+
+
+            # Top Reels Tab
+            with tab2:
+                if scripts_df is not None and not scripts_df.empty:
+                    for idx, row in scripts_df.iterrows():
                         # Get data
                         rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
                         caption = get_column_value(row, ['caption', 'Caption', 'title', 'Title'], '')
@@ -630,126 +731,6 @@ def main():
                 else:
                     st.info("📊 No reel data available yet. Data will appear here once the workflow completes.")
             
-            # Script Ideas Tab
-            with tab2:
-                if scripts_df is not None and not scripts_df.empty:
-                    for idx, row in scripts_df.iterrows():
-                        # Get data
-                        rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
-                        script_title = get_column_value(row, ['script_title', 'Script Title', 'title'], 'Untitled')
-                        topic_title = get_column_value(row, ['topic_title', 'Topic Title', 'topic'], script_title)
-                        viral_score = get_column_value(row, ['viral_potential_score', 'Viral Potential Score'], None)
-                        audience = get_column_value(row, ['target_audience', 'Target Audience'], 'N/A')
-                        trigger = get_column_value(row, ['emotional_trigger', 'Emotional Trigger'], 'N/A')
-                        duration = get_column_value(row, ['estimated_duration', 'Duration'], 'N/A')
-                        full_text = get_column_value(row, ['full_text', 'Full Text', 'script_full_text'], '')
-
-                        # Card container
-                        st.markdown('<div class="script-card">', unsafe_allow_html=True)
-
-                        # Header with title and score
-                        col_title, col_score = st.columns([4, 1])
-                        with col_title:
-                            st.markdown(f'<div class="script-title-text">#{rank} · {script_title}</div>', unsafe_allow_html=True)
-                        with col_score:
-                            if viral_score:
-                                st.markdown(f'<div class="script-score">Score: {viral_score}/100</div>', unsafe_allow_html=True)
-
-                        # Meta information
-                        st.markdown(f'''
-                            <div class="script-meta">
-                                <div class="meta-item"><span class="meta-label">Duration:</span>{duration}</div>
-                                <div class="meta-item"><span class="meta-label">Audience:</span>{str(audience)[:60]}</div>
-                                <div class="meta-item"><span class="meta-label">Trigger:</span>{str(trigger)[:60]}</div>
-                            </div>
-                        ''', unsafe_allow_html=True)
-
-                        # Script preview (bold and slightly larger)
-                        if full_text:
-                            script_preview = str(full_text)[:250] + "..." if len(str(full_text)) > 250 else str(full_text)
-                            st.markdown(f'<div class="script-text">{script_preview}</div>', unsafe_allow_html=True)
-
-                        # View Details button
-                        with st.expander("📄 View Complete Details"):
-                            # Topic and titles
-                            st.markdown("### Script Information")
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.write(f"**Topic:** {topic_title}")
-                                st.write(f"**Script Title:** {script_title}")
-                                if viral_score:
-                                    st.write(f"**Viral Potential Score:** {viral_score}/100")
-                            with col2:
-                                st.write(f"**Duration:** {duration}")
-                                st.write(f"**Target Audience:** {audience}")
-                                st.write(f"**Emotional Trigger:** {trigger}")
-
-                            # Full script
-                            if full_text:
-                                st.markdown("### Full Script")
-                                st.markdown(f'<div class="script-text">{full_text}</div>', unsafe_allow_html=True)
-
-                            # Script components
-                            hook = get_column_value(row, ['script_hook', 'Hook'], None)
-                            buildup = get_column_value(row, ['script_buildup', 'Buildup'], None)
-                            value = get_column_value(row, ['script_value', 'Value'], None)
-                            cta = get_column_value(row, ['script_cta', 'CTA'], None)
-
-                            if any([hook, buildup, value, cta]):
-                                st.markdown("### Script Structure")
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    if hook:
-                                        st.markdown(f"**🎣 Hook:**\n\n{hook}")
-                                    if buildup:
-                                        st.markdown(f"**📈 Buildup:**\n\n{buildup}")
-                                with col2:
-                                    if value:
-                                        st.markdown(f"**💎 Value:**\n\n{value}")
-                                    if cta:
-                                        st.markdown(f"**🎯 CTA:**\n\n{cta}")
-
-                            # Additional details
-                            gap = get_column_value(row, ['content_gap_addressed', 'Content Gap'], None)
-                            why_works = get_column_value(row, ['why_this_works', 'Why This Works'], None)
-
-                            if gap or why_works:
-                                st.markdown("### Strategy Insights")
-                                if gap:
-                                    st.markdown(f"**Content Gap Addressed:**\n\n{gap}")
-                                if why_works:
-                                    st.markdown(f"**Why This Works:**\n\n{why_works}")
-
-                            # Caption
-                            caption_full = get_column_value(row, ['caption_full', 'Caption'], None)
-                            if caption_full:
-                                st.markdown("### Caption")
-                                st.text_area("", caption_full, height=120, disabled=True, key=f"script_caption_{idx}", label_visibility="collapsed")
-
-                            # Hashtags
-                            hashtags_all = get_column_value(row, ['hashtags_all', 'Hashtags All'], None)
-                            hashtags_primary = get_column_value(row, ['hashtags_primary', 'Primary Hashtags'], None)
-                            hashtags_secondary = get_column_value(row, ['hashtags_secondary', 'Secondary Hashtags'], None)
-                            hashtags_niche = get_column_value(row, ['hashtags_niche_specific', 'Niche Hashtags'], None)
-                            hashtags_trending = get_column_value(row, ['hashtags_trending', 'Trending Hashtags'], None)
-
-                            if any([hashtags_all, hashtags_primary, hashtags_secondary, hashtags_niche, hashtags_trending]):
-                                st.markdown("### Hashtags")
-                                if hashtags_primary:
-                                    st.markdown(f"**Primary:** {hashtags_primary}")
-                                if hashtags_secondary:
-                                    st.markdown(f"**Secondary:** {hashtags_secondary}")
-                                if hashtags_niche:
-                                    st.markdown(f"**Niche Specific:** {hashtags_niche}")
-                                if hashtags_trending:
-                                    st.markdown(f"**Trending:** {hashtags_trending}")
-                                if hashtags_all:
-                                    st.markdown(f"**All Hashtags:** {hashtags_all}")
-
-                        st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.info("✨ No script ideas available yet. Data will appear here once the workflow completes.")
-
             # Summary Tab
             with tab3:
                 if summary_df is not None and not summary_df.empty:
