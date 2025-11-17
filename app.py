@@ -27,20 +27,33 @@ def authenticate(username, password):
     users = credentials.get('users', {})
     return username in users and users[username] == password
 
+# Google Sheets Configuration
+SHEET_ID = "1OTuusBq6CSawKz6nHHsZvJ1275AffW8seICMopMuN6s"
+
 # Data fetching functions
-def fetch_sheet_data(sheet_name, worksheet_name):
+def fetch_sheet_data(worksheet_name):
+    """
+    Fetch data from public Google Sheet using CSV export
+    """
     try:
-        if worksheet_name == "ResearchSummary":
-            df = pd.read_csv('/mnt/user-data/uploads/InstaResearchData_-_ResearchSummary.csv')
-        elif worksheet_name == "TopPerformingReels":
-            df = pd.read_csv('/mnt/user-data/uploads/InstaResearchData_-_TopPerformingReels__4_.csv')
-        elif worksheet_name == "Top3ReelsIdeas":
-            df = pd.read_csv('/mnt/user-data/uploads/InstaResearchData_-_Top3ReelsIdeas__3_.csv')
-        else:
-            return None
+        # Construct the public CSV export URL
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
+
+        # Read the CSV data
+        df = pd.read_csv(url)
         return df
     except Exception as e:
+        st.error(f"Error fetching sheet '{worksheet_name}': {str(e)}")
         return None
+
+def get_column_value(row, possible_names, default=None):
+    """
+    Try to get value from row using multiple possible column names
+    """
+    for name in possible_names if isinstance(possible_names, list) else [possible_names]:
+        if name in row and pd.notna(row[name]):
+            return row[name]
+    return default
 
 def format_number(num):
     try:
@@ -104,14 +117,28 @@ def call_n8n_workflow(niche, language_script, language_text, writing_style, loca
 
 # Check if data is ready
 def check_data_ready(initial_timestamp):
+    """
+    Check if new data is available by comparing generatedAt timestamp
+    """
     try:
-        summary_df = fetch_sheet_data("InstaResearchData", "ResearchSummary")
+        summary_df = fetch_sheet_data("ResearchSummary")
         if summary_df is not None and not summary_df.empty:
-            current_timestamp = summary_df['generatedAt'].iloc[0]
-            if pd.notna(current_timestamp) and str(current_timestamp) != str(initial_timestamp):
-                return True, current_timestamp
+            # Check if generatedAt column exists
+            if 'generatedAt' in summary_df.columns:
+                current_timestamp = summary_df['generatedAt'].iloc[0]
+
+                # If initial_timestamp is None, store current and wait for change
+                if initial_timestamp is None:
+                    return False, current_timestamp
+
+                # Compare timestamps
+                if pd.notna(current_timestamp) and str(current_timestamp) != str(initial_timestamp):
+                    return True, current_timestamp
+            else:
+                st.warning("generatedAt column not found in ResearchSummary sheet")
         return False, initial_timestamp
-    except:
+    except Exception as e:
+        st.error(f"Error checking data ready: {str(e)}")
         return False, initial_timestamp
 
 # Apply CSS styling
@@ -245,10 +272,12 @@ def main():
                 if not niche:
                     st.error("Please enter a content niche")
                 else:
-                    # Get initial timestamp
-                    summary_df = fetch_sheet_data("InstaResearchData", "ResearchSummary")
-                    initial_timestamp = summary_df['generatedAt'].iloc[0] if summary_df is not None and not summary_df.empty else None
-                    
+                    # Get initial timestamp before triggering workflow
+                    summary_df = fetch_sheet_data("ResearchSummary")
+                    initial_timestamp = None
+                    if summary_df is not None and not summary_df.empty and 'generatedAt' in summary_df.columns:
+                        initial_timestamp = summary_df['generatedAt'].iloc[0]
+
                     st.session_state.research_params = {
                         'niche': niche,
                         'initial_timestamp': initial_timestamp,
@@ -259,32 +288,70 @@ def main():
                         success, message = call_n8n_workflow(niche, language_script, language_text, writing_style, location, reels_count)
                         if success:
                             st.session_state.checking_data = True
-                            st.success("Research workflow started!")
-                            st.info("Checking for results every 30 seconds...")
+                            st.success("✅ Research workflow started!")
+                            st.info("🔄 Polling for updates every 10 seconds. Please wait...")
                             time.sleep(2)
                             st.rerun()
+                        else:
+                            st.error(f"❌ Failed to start workflow: {message}")
         
-        # Check for updates
+        # Check for updates with polling
         if 'checking_data' in st.session_state and st.session_state.checking_data:
             params = st.session_state.research_params
-            
-            with st.spinner("⏳ Checking for results..."):
-                data_ready, new_timestamp = check_data_ready(params['initial_timestamp'])
-                
-                if data_ready:
-                    st.session_state.checking_data = False
-                    st.session_state.show_results = True
-                    st.success("✅ Research complete!")
-                    time.sleep(1)
+            elapsed = datetime.now() - params['start_time']
+            elapsed_seconds = int(elapsed.total_seconds())
+
+            # Display progress indicator
+            st.markdown("---")
+            st.markdown("### ⏳ Research in Progress")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Time Elapsed", f"{elapsed_seconds // 60}m {elapsed_seconds % 60}s")
+            with col2:
+                st.metric("Status", "🔄 Polling for updates...")
+            with col3:
+                if params['initial_timestamp']:
+                    st.metric("Initial Timestamp", str(params['initial_timestamp'])[:19])
+
+            # Check if data is ready
+            data_ready, new_timestamp = check_data_ready(params['initial_timestamp'])
+
+            if data_ready:
+                st.session_state.checking_data = False
+                st.session_state.show_results = True
+                st.balloons()
+                st.success(f"✅ Research complete! New data generated at: {new_timestamp}")
+                time.sleep(2)
+                st.rerun()
+            else:
+                # Continue polling if within timeout
+                if elapsed_seconds < 600:  # 10 minutes timeout
+                    progress_bar = st.progress(min(elapsed_seconds / 600, 1.0))
+                    st.info(f"⏳ Checking for new data... Next check in 10 seconds")
+
+                    # Show current timestamp for debugging
+                    with st.expander("🔍 Debug Info"):
+                        st.write(f"**Initial Timestamp:** {params['initial_timestamp']}")
+                        st.write(f"**Current Timestamp:** {new_timestamp}")
+                        st.write(f"**Timestamps Match:** {str(params['initial_timestamp']) == str(new_timestamp)}")
+
+                    # Manual stop button
+                    col1, col2, col3 = st.columns([2, 1, 2])
+                    with col2:
+                        if st.button("⏸️ Stop Polling", use_container_width=True):
+                            st.session_state.checking_data = False
+                            st.session_state.show_results = True
+                            st.warning("Polling stopped manually. You can refresh to see current data.")
+                            st.rerun()
+
+                    # Wait and rerun
+                    time.sleep(10)
                     st.rerun()
                 else:
-                    elapsed = datetime.now() - params['start_time']
-                    if elapsed.total_seconds() < 600:
-                        time.sleep(30)
-                        st.rerun()
-                    else:
-                        st.session_state.checking_data = False
-                        st.warning("Research is taking longer than expected. Please refresh manually.")
+                    st.session_state.checking_data = False
+                    st.session_state.show_results = True
+                    st.warning("⚠️ Research is taking longer than expected. Showing current data. Please refresh if needed.")
         
         # Refresh button
         if 'research_params' in st.session_state:
@@ -294,10 +361,10 @@ def main():
         
         # Display results
         if 'show_results' in st.session_state or 'research_params' in st.session_state:
-            # Load data
-            summary_df = fetch_sheet_data("InstaResearchData", "ResearchSummary")
-            reels_df = fetch_sheet_data("InstaResearchData", "TopPerformingReels")
-            scripts_df = fetch_sheet_data("InstaResearchData", "Top3ReelsIdeas")
+            # Load data from Google Sheets
+            summary_df = fetch_sheet_data("ResearchSummary")
+            reels_df = fetch_sheet_data("TopPerformingReels")
+            scripts_df = fetch_sheet_data("Top3ReelsIdeas")
             
             # Tabs
             tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "🎬 Top Reels", "✨ Script Ideas", "📈 Raw Data"])
@@ -328,45 +395,52 @@ def main():
                     for idx, row in reels_df.head(10).iterrows():
                         with st.container():
                             st.markdown(f"<div class='reel-card'>", unsafe_allow_html=True)
-                            
+
                             # Rank and caption
-                            rank = row['rank'] if 'rank' in row else idx + 1
+                            rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
                             st.markdown(f"### #{rank} - Top Performing Reel")
-                            
-                            caption = str(row['caption'])[:200] + "..." if len(str(row['caption'])) > 200 else row['caption']
-                            st.write(caption)
-                            
-                            # Metrics
+
+                            caption = get_column_value(row, ['caption', 'Caption', 'title', 'Title'], 'No caption available')
+                            caption_text = str(caption)[:200] + "..." if len(str(caption)) > 200 else caption
+                            st.write(caption_text)
+
+                            # Metrics - handle multiple possible column names
                             col1, col2, col3, col4, col5 = st.columns(5)
-                            
+
                             with col1:
-                                views = row.get('views', row.get('videoPlayCount', 0))
+                                views = get_column_value(row, ['views', 'Views', 'videoPlayCount', 'viewCount'], 0)
                                 st.metric("Views", format_number(views))
-                            
+
                             with col2:
-                                likes = row.get('likesCount', 0)
+                                likes = get_column_value(row, ['likesCount', 'likes', 'Likes', 'likeCount'], 0)
                                 st.metric("Likes", format_number(likes))
-                            
+
                             with col3:
-                                comments = row.get('comments', 0)
+                                comments = get_column_value(row, ['comments', 'Comments', 'commentCount', 'commentsCount'], 0)
                                 st.metric("Comments", format_number(comments))
-                            
+
                             with col4:
-                                shares = row.get('reshareCount', 0)
+                                shares = get_column_value(row, ['reshareCount', 'shares', 'Shares', 'shareCount'], 0)
                                 st.metric("Shares", format_number(shares))
-                            
+
                             with col5:
-                                engagement = row.get('engagement_rate', calculate_engagement_rate(likes, views))
+                                engagement = get_column_value(row, ['engagement_rate', 'engagementRate', 'Engagement Rate'], None)
+                                if engagement is None:
+                                    engagement = calculate_engagement_rate(likes, views)
                                 st.metric("Engagement", f"{float(engagement):.2f}%")
-                            
+
                             # Link and user
-                            if 'url' in row and pd.notna(row['url']):
-                                st.markdown(f"[View Reel]({row['url']})")
-                            
-                            if 'ownerUsername' in row and pd.notna(row['ownerUsername']):
-                                st.caption(f"@{row['ownerUsername']}")
-                            
+                            url = get_column_value(row, ['url', 'URL', 'link', 'Link'], None)
+                            if url:
+                                st.markdown(f"[🔗 View Reel]({url})")
+
+                            username = get_column_value(row, ['ownerUsername', 'username', 'creator', 'Creator'], None)
+                            if username:
+                                st.caption(f"👤 @{username}")
+
                             st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.info("📊 No reel data available yet. Data will appear here once the workflow completes.")
             
             # Script Ideas Tab
             with tab3:
@@ -374,42 +448,57 @@ def main():
                     for idx, row in scripts_df.iterrows():
                         with st.container():
                             st.markdown("<div class='script-card'>", unsafe_allow_html=True)
-                            
-                            rank = row['rank'] if 'rank' in row else idx + 1
-                            st.markdown(f"### 💡 Idea #{rank}: {row.get('script_title', 'Untitled')}")
-                            
-                            if 'viral_potential_score' in row:
-                                st.success(f"Viral Potential: {row['viral_potential_score']}/100")
-                            
+
+                            rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
+                            title = get_column_value(row, ['script_title', 'Script Title', 'title', 'Title'], 'Untitled Script')
+                            st.markdown(f"### 💡 Idea #{rank}: {title}")
+
+                            # Viral potential
+                            viral_score = get_column_value(row, ['viral_potential_score', 'Viral Potential Score', 'viralScore'], None)
+                            if viral_score is not None:
+                                st.success(f"🔥 Viral Potential: {viral_score}/100")
+
                             # Meta info
                             col1, col2, col3 = st.columns(3)
                             with col1:
-                                st.markdown(f"**Duration:** {row.get('estimated_duration', 'N/A')}")
+                                duration = get_column_value(row, ['estimated_duration', 'duration', 'Duration'], 'N/A')
+                                st.markdown(f"**⏱️ Duration:** {duration}")
                             with col2:
-                                st.markdown(f"**Audience:** {str(row.get('target_audience', 'N/A'))[:50]}...")
+                                audience = get_column_value(row, ['target_audience', 'Target Audience', 'audience'], 'N/A')
+                                audience_text = str(audience)[:50] + "..." if len(str(audience)) > 50 else str(audience)
+                                st.markdown(f"**👥 Audience:** {audience_text}")
                             with col3:
-                                st.markdown(f"**Trigger:** {str(row.get('emotional_trigger', 'N/A'))[:50]}...")
-                            
+                                trigger = get_column_value(row, ['emotional_trigger', 'Emotional Trigger', 'trigger'], 'N/A')
+                                trigger_text = str(trigger)[:50] + "..." if len(str(trigger)) > 50 else str(trigger)
+                                st.markdown(f"**💭 Trigger:** {trigger_text}")
+
                             # Script preview
-                            if 'full_text' in row and pd.notna(row['full_text']):
-                                with st.expander("View Full Script"):
-                                    st.text_area("", row['full_text'], height=200, disabled=True)
-                            
+                            full_text = get_column_value(row, ['full_text', 'Full Text', 'script_full_text', 'script'], None)
+                            if full_text:
+                                with st.expander("📝 View Full Script"):
+                                    st.text_area("", full_text, height=200, disabled=True, key=f"script_{idx}")
+
                             # Script components
-                            with st.expander("Script Structure"):
+                            with st.expander("📋 Script Structure"):
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if 'script_hook' in row:
-                                        st.info(f"**Hook:** {row['script_hook']}")
-                                    if 'script_buildup' in row:
-                                        st.info(f"**Buildup:** {row['script_buildup']}")
+                                    hook = get_column_value(row, ['script_hook', 'Hook', 'hook'], None)
+                                    if hook:
+                                        st.info(f"**🎣 Hook:**\n{hook}")
+                                    buildup = get_column_value(row, ['script_buildup', 'Buildup', 'buildup'], None)
+                                    if buildup:
+                                        st.info(f"**📈 Buildup:**\n{buildup}")
                                 with col2:
-                                    if 'script_value' in row:
-                                        st.success(f"**Value:** {row['script_value']}")
-                                    if 'script_cta' in row:
-                                        st.warning(f"**CTA:** {row['script_cta']}")
-                            
+                                    value = get_column_value(row, ['script_value', 'Value', 'value'], None)
+                                    if value:
+                                        st.success(f"**💎 Value:**\n{value}")
+                                    cta = get_column_value(row, ['script_cta', 'CTA', 'cta'], None)
+                                    if cta:
+                                        st.warning(f"**🎯 CTA:**\n{cta}")
+
                             st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.info("✨ No script ideas available yet. Data will appear here once the workflow completes.")
             
             # Raw Data Tab
             with tab4:
