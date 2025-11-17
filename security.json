@@ -1,0 +1,18 @@
+{
+  "users": {
+    "admin": "admin123",
+    "user1": "password123",
+    "demo": "demo2024"
+  },
+  "n8n_api_url": "https://berryworkplace.app.n8n.cloud/webhook/research",
+  "api_settings": {
+    "timeout": 60,
+    "retry_attempts": 3
+  },
+  "google_config": {
+       "auth_method": "simple",
+       "sheet_id": "1OTuusBq6CSawKz6nHHsZvJ1275AffW8seICMopMuN6s"
+     }
+     
+}
+
