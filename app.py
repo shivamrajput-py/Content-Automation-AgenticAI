@@ -643,8 +643,8 @@ def main():
 
             # Top Reels Tab
             with tab2:
-                if scripts_df is not None and not scripts_df.empty:
-                    for idx, row in scripts_df.iterrows():
+                if reels_df is not None and not reels_df.empty:
+                    for idx, row in reels_df.iterrows():
                         # Get data
                         rank = get_column_value(row, ['rank', 'Rank'], idx + 1)
                         caption = get_column_value(row, ['caption', 'Caption', 'title', 'Title'], '')
