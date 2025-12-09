@@ -3,7 +3,7 @@
     "helloomedia": "media@toolaccess",
     "shivam": "shivam12345"
   },
-  "n8n_api_url": "https://berryworkplace.app.n8n.cloud/webhook/research",
+  "n8n_api_url": "https://shivamn8n11.app.n8n.cloud/webhook/research",
   "api_settings": {
     "timeout": 60,
     "retry_attempts": 3
@@ -14,4 +14,3 @@
      }
      
 }
-
