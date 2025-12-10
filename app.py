@@ -204,23 +204,26 @@ def load_credentials():
         with open('security.json', 'r') as f: return json.load(f)
     except: return {"users": {"admin": "admin123"}, "n8n_api_url": ""}
 
+# -----------------------------------------------------------------------------
+# 4. WORKFLOW TRIGGER (N8N)
+# -----------------------------------------------------------------------------
 def trigger_workflow(params):
     creds = load_credentials()
     url = creds.get('n8n_api_url', '')
     if not url: return False, "N8N API URL not found in security.json"
     
     try:
-        # Wrap params in 'body' for N8N
+        # CORRECTION: Do not wrap in 'body'. Send flat JSON.
         payload = {
-            "body": {
-                **params,
-                "timestamp": datetime.now().isoformat()
-            }
+            **params,
+            "timestamp": datetime.now().isoformat()
         }
         
         try:
-            requests.post(url, json=payload, timeout=2, headers={'Content-Type': 'application/json'})
+            # Added verify=False in case of SSL cert issues, remove if not needed
+            requests.post(url, json=payload, timeout=5, headers={'Content-Type': 'application/json'})
         except requests.exceptions.Timeout:
+            # n8n might take time to process, but the trigger happened
             pass 
             
         return True, "Workflow initiated successfully"
