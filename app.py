@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import time
 import ast
@@ -30,6 +30,7 @@ def apply_styling():
         --bg-card: #161b22;
         --border-glass: 1px solid rgba(255, 255, 255, 0.1);
         --accent-core: #7c3aed;
+        --accent-glow: rgba(124, 58, 237, 0.3);
         --text-primary: #f8fafc;
         --text-secondary: #94a3b8;
     }
@@ -123,6 +124,18 @@ SHEET_MAPPING = {
     "Competitors": "CompetitorData"
 }
 
+@st.cache_data(ttl=0) # No cache for summary during polling
+def fetch_summary_timestamp():
+    """Lightweight fetch just to check timestamp"""
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ResearchSummary"
+        df = pd.read_csv(url)
+        if df is not None and not df.empty and 'generatedAt' in df.columns:
+            return str(df['generatedAt'].iloc[0])
+    except:
+        return None
+    return None
+
 @st.cache_data(ttl=60)
 def fetch_data(key):
     try:
@@ -131,6 +144,7 @@ def fetch_data(key):
         df = pd.read_csv(url)
         df.columns = df.columns.str.strip()
         
+        # --- FIX NUMERIC COLUMNS FOR SORTING ---
         numeric_cols = ['velocity_score', 'videoPlayCount', 'likesCount', 'commentsCount', 'reshareCount', 'views', 'Score', 'Likes', 'Retweets', 'Replies', 'age_hours']
         for col in numeric_cols:
             if col in df.columns:
@@ -178,6 +192,7 @@ def parse_summary_points(text):
     return sections
 
 def escape_fstring(text):
+    """Escapes curly braces to prevent f-string errors"""
     if not isinstance(text, str): return text
     return text.replace("{", "{{").replace("}", "}}")
 
@@ -195,7 +210,7 @@ def trigger_workflow(params):
     if not url: return False, "N8N API URL not found in security.json"
     
     try:
-        # --- CRITICAL FIX: Wrap in 'body' object to match N8N expectations ---
+        # Wrap params in 'body' for N8N
         payload = {
             "body": {
                 **params,
@@ -203,11 +218,10 @@ def trigger_workflow(params):
             }
         }
         
-        # Fire request with short timeout (we don't wait for completion)
         try:
             requests.post(url, json=payload, timeout=2, headers={'Content-Type': 'application/json'})
         except requests.exceptions.Timeout:
-            pass # This is EXPECTED for long scraping jobs
+            pass 
             
         return True, "Workflow initiated successfully"
     except Exception as e:
@@ -225,15 +239,15 @@ def show_reel_details(row):
     img_url = get_safe(row, ['displayUrl', 'thumbnail'], '')
     url = get_safe(row, ['url', 'permalink'], '#')
     
-    # Metrics
-    views = get_safe(row, ['views', 'videoPlayCount', 'igPlayCount'], 0)
-    likes = get_safe(row, ['likesCount', 'likes'], 0)
-    comments = get_safe(row, ['commentsCount', 'comments'], 0)
-    shares = get_safe(row, ['reshareCount', 'shares'], 0)
+    # Safe metrics (handling missing keys for competitors)
+    views = get_safe(row, ['views', 'videoPlayCount', 'igPlayCount', 'videoViewCount'], 0)
+    likes = get_safe(row, ['likesCount', 'likes'], None)
+    comments = get_safe(row, ['commentsCount', 'comments'], None)
+    shares = get_safe(row, ['reshareCount', 'shares'], None)
     age = get_safe(row, ['age_hours'], 0)
     velocity = get_safe(row, ['velocity_score'], 0)
+    duration = get_safe(row, ['videoDuration'], None)
 
-    # Top Level Stats
     c1, c2, c3 = st.columns(3)
     c1.metric("Viral Velocity", f"{float(velocity):.1f}")
     c2.metric("Age", f"{float(age):.1f} hrs")
@@ -245,26 +259,31 @@ def show_reel_details(row):
     with col1:
         st.image(img_url, use_container_width=True)
         st.link_button("↗ Open in Instagram", url, use_container_width=True)
+        if duration:
+            st.caption(f"Duration: {float(duration):.1f}s")
     
     with col2:
         st.markdown("#### 📊 Engagement")
         sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("Likes", format_k(likes))
-        sc2.metric("Comments", format_k(comments))
-        sc3.metric("Shares", format_k(shares))
+        sc1.metric("Likes", format_k(likes) if likes is not None else "N/A")
+        sc2.metric("Comments", format_k(comments) if comments is not None else "N/A")
+        sc3.metric("Shares", format_k(shares) if shares is not None else "N/A")
         
         st.markdown("#### 📝 Full Caption")
         st.caption(clean_json_text(caption))
         
         st.markdown("#### # Hashtags")
         tags = clean_json_text(get_safe(row, ['hashtags'], ''))
-        st.info(tags)
+        if tags and tags != '[]':
+            st.info(tags)
+        else:
+            st.caption("No hashtags found")
 
 def render_reel_card(row, rank):
     """Card with 9:16 Thumbnail and Analyze Button"""
     img_url = get_safe(row, ['displayUrl', 'thumbnail'], '')
     caption = clean_json_text(get_safe(row, ['caption', 'title'], 'No Caption'))
-    views = format_k(get_safe(row, ['views', 'videoPlayCount'], 0))
+    views = format_k(get_safe(row, ['views', 'videoPlayCount', 'videoViewCount'], 0))
     velocity = float(get_safe(row, ['velocity_score'], 0))
     
     badge_class = "badge-norm"
@@ -274,7 +293,7 @@ def render_reel_card(row, rank):
     html = f"""
 <div class="glass-panel" style="padding:0; height: 100%;">
     <div class="reel-thumbnail-container">
-        <img src="{img_url}" class="reel-img" onerror="this.src='https://via.placeholder.com/400x711?text=No+Image'">
+        <img src="{img_url}" class="reel-img" referrerpolicy="no-referrer" onerror="this.src='https://via.placeholder.com/400x711?text=No+Image'">
         <div class="overlay-top-left">#{rank}</div>
         <div class="overlay-top-right">
             <span class="stat-badge {badge_class}">⚡ {velocity:.1f}</span>
@@ -299,20 +318,30 @@ def render_reel_card(row, rank):
     b2.link_button("↗ Open", url, use_container_width=True)
 
 
-# --- CODE 2: SCRIPT CARD (With HTML Fixes) ---
+# --- CODE 2: SCRIPT CARD (Updated with Full Data) ---
 def render_script_card(row, idx):
+    # Metadata
     title = get_safe(row, ['script_title', 'title'], 'Untitled Script')
     topic = get_safe(row, ['topic_title', 'topic'], 'General')
     score = get_safe(row, ['viral_potential_score', 'score'], 0)
     duration = get_safe(row, ['estimated_duration'], '30s')
     audience = get_safe(row, ['target_audience'], 'General')
     
+    # Structure breakdown
     hook = get_safe(row, ['script_hook'], '')
     buildup = get_safe(row, ['script_buildup'], '')
     value = get_safe(row, ['script_value'], '')
     cta = get_safe(row, ['script_cta'], '')
+    
+    # Text Data
+    full_text = get_safe(row, ['full_text', 'script_full_text'], '')
+    caption_text = get_safe(row, ['caption_full', 'caption'], '')
+    
+    # Strategy Data
     why_works = get_safe(row, ['why_this_works'], '')
     strategy = get_safe(row, ['content_gap_addressed'], 'N/A')
+    trigger = get_safe(row, ['emotional_trigger'], '')
+    hashtags_all = get_safe(row, ['hashtags_niche_specific', 'hashtags'], '')
 
     with st.container():
         html = f"""
@@ -337,7 +366,7 @@ def render_script_card(row, idx):
             <div style="color: white; font-size: 0.85rem;">{escape_fstring(audience)}</div>
         </div>
         <div style="background: rgba(255,255,255,0.03); padding: 0.5rem; border-radius: 6px;">
-            <div class="block-label">Strategy</div>
+            <div class="block-label">Gap Addressed</div>
             <div style="color: white; font-size: 0.85rem;">{escape_fstring(strategy[:50])}...</div>
         </div>
     </div>
@@ -345,25 +374,52 @@ def render_script_card(row, idx):
 """
         st.markdown(html, unsafe_allow_html=True)
         
-        with st.expander("📜 View Full Script & Structure", expanded=(idx==1)):
-            c1, c2 = st.columns([2, 1])
+        with st.expander("📜 View Full Script & Analysis", expanded=(idx==1)):
+            c1, c2 = st.columns([1.8, 1])
+            
             with c1:
-                st.markdown("#### Script Flow")
-                if hook:
-                    st.markdown(f'<div class="script-block hook"><div class="block-label">The Hook</div><div style="white-space: pre-wrap;">{escape_fstring(hook)}</div></div>', unsafe_allow_html=True)
-                if buildup or value:
-                    st.markdown(f'<div class="script-block body"><div class="block-label">The Value</div><div style="white-space: pre-wrap;">{escape_fstring(buildup)}<br>{escape_fstring(value)}</div></div>', unsafe_allow_html=True)
-                if cta:
-                    st.markdown(f'<div class="script-block cta"><div class="block-label">CTA</div><div style="white-space: pre-wrap;">{escape_fstring(cta)}</div></div>', unsafe_allow_html=True)
+                st.markdown("### 🗣️ Script Construction")
                 
-                full_text = get_safe(row, ['full_text', 'script_full_text'], '')
-                if not hook and full_text:
-                    st.code(full_text, language="markdown")
+                 # 2. Full Reading Script
+                if full_text:
+                    st.markdown(f'<div class="script-block body"><div class="block-label">FULL SCRIPT TEXT</div>{escape_fstring(full_text)}</div>', unsafe_allow_html=True)
+
+                # 3. Caption
+                if caption_text:
+                    st.markdown(f'<div class="script-block body"><div class="block-label">CAPTIONS</div>{escape_fstring(caption_text)}</div>', unsafe_allow_html=True)
+
+                
+                # 1. Structural Breakdown
+                if hook or buildup or value or cta:
+                    if hook:
+                        st.markdown(f'<div class="script-block hook"><div class="block-label">THE HOOK (0-3s)</div>{escape_fstring(hook)}</div>', unsafe_allow_html=True)
+                    if buildup:
+                         st.markdown(f'<div class="script-block body"><div class="block-label">BUILD UP</div>{escape_fstring(buildup)}</div>', unsafe_allow_html=True)
+                    if value:
+                         st.markdown(f'<div class="script-block body"><div class="block-label">VALUE/PAYOFF</div>{escape_fstring(value)}</div>', unsafe_allow_html=True)
+                    if cta:
+                        st.markdown(f'<div class="script-block cta"><div class="block-label">CALL TO ACTION</div>{escape_fstring(cta)}</div>', unsafe_allow_html=True)
+                
+    
+
+                
             with c2:
-                st.markdown("#### 🧠 Why It Works")
-                st.info(why_works)
-                st.markdown("#### # Hashtags")
-                st.caption(get_safe(row, ['hashtags_all', 'hashtags'], ''))
+                st.markdown("### 🧠 Strategic Insight")
+                
+                if trigger:
+                    st.markdown(f"**🔥 Emotional Trigger**\n\n{trigger}")
+                    st.divider()
+                
+                if why_works:
+                    st.markdown(f"**✨ Why it Works**\n\n{why_works}")
+                    st.divider()
+                
+                if strategy != 'N/A':
+                    st.markdown(f"**🎯 Gap Addressed**\n\n{strategy}")
+                    st.divider()
+                    
+                st.markdown("**#️⃣ Hashtags**")
+                st.caption(hashtags_all)
 
 # --- CODE 2: TWEET CARD (Merged Styling) ---
 def render_tweet_card(row, is_viral=False):
@@ -408,7 +464,6 @@ def render_tweet_card(row, is_viral=False):
 def main():
     apply_styling()
     
-    # ------------------ AUTHENTICATION ------------------
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
 
@@ -426,7 +481,43 @@ def main():
                         st.rerun()
         return
 
-    # ------------------ SIDEBAR (Code 1 - Detailed Form) ------------------
+    # --- POLLING LOGIC ---
+    if 'polling' in st.session_state and st.session_state.polling:
+        placeholder = st.empty()
+        
+        # Start time check
+        if 'poll_start' not in st.session_state:
+            st.session_state.poll_start = time.time()
+            st.session_state.initial_ts = fetch_summary_timestamp()
+        
+        elapsed = int(time.time() - st.session_state.poll_start)
+        
+        with placeholder.container():
+            st.markdown(f"""
+            <div style="padding: 2rem; text-align: center; border: 1px solid #7c3aed; border-radius: 12px; background: rgba(124, 58, 237, 0.1);">
+                <h3>🚀 Agents Deployed & Researching...</h3>
+                <p>Scanning Instagram, Analyzing Trends, Writing Scripts</p>
+                <h1>⏱️ {elapsed}s</h1>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Check for update every 15s (polling loop simulation)
+            current_ts = fetch_summary_timestamp()
+            
+            if current_ts != st.session_state.initial_ts:
+                st.session_state.polling = False
+                st.success("✅ New Intelligence Acquired!")
+                st.cache_data.clear()
+                time.sleep(2)
+                st.rerun()
+            elif elapsed > 300: # 5 min timeout
+                st.session_state.polling = False
+                st.error("⚠️ Research timed out. Please check N8N.")
+            else:
+                time.sleep(15) # Wait before re-checking
+                st.rerun()
+        return # Stop rendering rest of app while polling
+
     with st.sidebar:
         st.title("⚡ TheHelloMedia")
         view = st.radio("Menu", ["Dashboard", "Content Lab", "Insta Intelligence", "X Pulse", "Competitors"], label_visibility="collapsed")
@@ -449,12 +540,15 @@ def main():
                 
                 st.markdown("### 🔍 Filters")
                 count = st.number_input("Reels to Scrape (Total)", min_value=10, max_value=100, value=30)
-                reels_filter = st.number_input("Reels Till Filter (Days)", min_value=1, max_value=365, value=30, help="How many reels to check back")
+                reels_filter = st.number_input("Reels Till Filter (Days)", min_value=1, max_value=365, value=30, help="Look back X days")
                 min_likes = st.number_input("Min Likes Filter", min_value=0, value=0)
                 competitors = st.text_area("Competitor Usernames (comma separated)", placeholder="espncricinfo, icc, bcci")
                 res_type = "Instagram"
 
                 if st.form_submit_button("🚀 Launch Research Agents"):
+                    # Calculate per-hashtag limit (N8N uses limit per hashtag)
+                    limit_per_tag = max(1, count // 5)
+                    
                     params = {
                         "is_specific_niche": is_specific,
                         "creator_niche": creator_niche,
@@ -463,28 +557,30 @@ def main():
                         "language_of_text": lang_text,
                         "writing_style": style,
                         "location": location,
-                        "noOfReelsToScrape": count,
+                        "noOfReelsToScrape": limit_per_tag, # Sending optimized limit
                         "type": res_type,
                         "reelsTill_Filter": reels_filter,
                         "minLikesReel_Filter": min_likes,
                         "competitorListUsernames": competitors
                     }
+                    
                     with st.spinner("Transmitting coordinates to N8N..."):
                         success, msg = trigger_workflow(params)
-                        if success: st.success(f"Deployed! {msg}")
-                        else: st.error(f"Error: {msg}")
+                        if success:
+                            st.session_state.polling = True
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {msg}")
 
         if st.button("🔄 Refresh Data"):
             st.cache_data.clear()
             st.rerun()
 
-    # ------------------ DASHBOARD (Code 2 - Parsed UI) ------------------
     if view == "Dashboard":
         st.title("🚀 Research Command Center")
         summ = fetch_data("Summary")
         reels = fetch_data("Reels")
         
-        # High Level Metrics
         if reels is not None:
             c1, c2, c3 = st.columns(3)
             max_vel = reels['velocity_score'].max() if 'velocity_score' in reels else 0
@@ -494,7 +590,6 @@ def main():
                 last_run = get_safe(summ.iloc[0], ['generatedAt'], 'Unknown')[:16]
                 c3.metric("Last Sync", last_run)
 
-        # Parsed Executive Summary
         if summ is not None and not summ.empty:
             raw_text = get_safe(summ.iloc[0], ['instagram_summary_research'], '')
             sections = parse_summary_points(raw_text)
@@ -514,7 +609,6 @@ def main():
             if schedule:
                 st.markdown(f'<div class="glass-panel" style="border-left: 4px solid #f59e0b;"><h4 style="color: #fbbf24; margin-top:0;">📅 Strategic Posting Schedule</h4><p style="font-size: 0.9rem; margin-bottom: 0;">{escape_fstring(schedule)}</p></div>', unsafe_allow_html=True)
 
-    # ------------------ INSTA INTELLIGENCE (Code 1 - UI) ------------------
     elif view == "Insta Intelligence":
         st.title("📸 Instagram Intelligence")
         df = fetch_data("Reels")
@@ -536,7 +630,6 @@ def main():
                 with cols[i % 4]: render_reel_card(row, i+1)
         else: st.error("No Instagram Data Found")
 
-    # ------------------ CONTENT LAB (Code 2 - UI) ------------------
     elif view == "Content Lab":
         st.title("🤖 AI Script Lab")
         scripts = fetch_data("Scripts")
@@ -544,7 +637,6 @@ def main():
             for i, row in scripts.iterrows():
                 render_script_card(row, i+1)
 
-    # ------------------ X PULSE (Code 2 - UI) ------------------
     elif view == "X Pulse":
         st.title("🐦 Twitter / X Pulse")
         t1, t2 = st.tabs(["🔥 Viral Hits", "⏱️ Fresh Feed"])
@@ -557,7 +649,6 @@ def main():
             if df is not None:
                 for _, row in df.iterrows(): render_tweet_card(row, is_viral=False)
 
-    # ------------------ COMPETITORS (Code 1 - UI) ------------------
     elif view == "Competitors":
         st.title("⚔️ Competitor Recon")
         df = fetch_data("Competitors")
@@ -568,8 +659,6 @@ def main():
                 for i, row in stats.head(3).iterrows():
                     with [c1, c2, c3][i]:
                         st.markdown(f'<div class="glass-panel" style="text-align: center; border-top: 4px solid #7c3aed;"><h3 style="margin-bottom: 0;">@{row["ownerUsername"]}</h3><div style="font-size: 2rem; font-weight: 700; color: #10b981;">{row["velocity_score"]:.1f}</div><div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Avg Velocity</div></div>', unsafe_allow_html=True)
-            
-            st.markdown("### 🕵️ Recent Activities")
             cols = st.columns(4)
             for i, row in df.iterrows():
                 with cols[i % 4]: render_reel_card(row, f"C-{i+1}")
