@@ -499,7 +499,7 @@ def main():
                 st.cache_data.clear()
                 time.sleep(2)
                 st.rerun()
-            elif elapsed > 300: # 5 min timeout
+            elif elapsed > 1500: # 5 min timeout
                 st.session_state.polling = False
                 st.error("⚠️ Research timed out. Please check N8N.")
             else:
@@ -528,7 +528,7 @@ def main():
                     location = st.text_input("Location", value="India")
                 
                 st.markdown("### 🔍 Filters")
-                count = st.number_input("Reels to Scrape (Total)", min_value=10, max_value=100, value=30)
+                count = st.slider("Reels to Scrape (Total)", min_value=10, max_value=500, value=30,  step=5)
                 reels_filter = st.number_input("Reels Till Filter (Days)", min_value=1, max_value=365, value=30, help="Look back X days")
                 min_likes = st.number_input("Min Likes Filter", min_value=0, value=0)
                 competitors = st.text_area("Competitor Usernames (space separated)", placeholder="espncricinfo icc bcci")
