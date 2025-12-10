@@ -7,7 +7,6 @@ import re
 import time
 import ast
 
-
 # -----------------------------------------------------------------------------
 # 1. SYSTEM CONFIGURATION
 # -----------------------------------------------------------------------------
@@ -146,7 +145,12 @@ def fetch_data(key):
         df.columns = df.columns.str.strip()
         
         # --- FIX NUMERIC COLUMNS FOR SORTING ---
-        numeric_cols = ['velocity_score', 'videoPlayCount', 'likesCount', 'commentsCount', 'reshareCount', 'views', 'Score', 'Likes', 'Retweets', 'Replies', 'age_hours']
+        # In your fetch_data function, update numeric_cols:
+        numeric_cols = [
+            'velocity_score', 'videoPlayCount', 'likesCount', 'commentsCount', 
+            'reshareCount', 'views', 'Score', 'Likes', 'Retweets', 'Replies', 
+            'age_hours', 'videoViewCount'  # <--- Added this to match your CSV
+        ]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -642,16 +646,45 @@ def main():
     elif view == "Competitors":
         st.title("⚔️ Competitor Recon")
         df = fetch_data("Competitors")
+        
         if df is not None:
+            # --- TOP 3 STATS SECTION ---
             if 'ownerUsername' in df.columns:
-                stats = df.groupby('ownerUsername').agg({'velocity_score': 'mean'}).reset_index().sort_values('velocity_score', ascending=False)
+                # Group by username and calculate average velocity
+                stats = df.groupby('ownerUsername').agg({
+                    'velocity_score': 'mean'
+                }).reset_index().sort_values('velocity_score', ascending=False)
+                
                 c1, c2, c3 = st.columns(3)
-                for i, row in stats.head(3).iterrows():
-                    with [c1, c2, c3][i]:
-                        st.markdown(f'<div class="glass-panel" style="text-align: center; border-top: 4px solid #7c3aed;"><h3 style="margin-bottom: 0;">@{row["ownerUsername"]}</h3><div style="font-size: 2rem; font-weight: 700; color: #10b981;">{row["velocity_score"]:.1f}</div><div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Avg Velocity</div></div>', unsafe_allow_html=True)
+                cols_list = [c1, c2, c3]
+                
+                # FIX: Use enumerate to get 0, 1, 2 counter instead of the shuffled dataframe index
+                for i, (_, row) in enumerate(stats.head(3).iterrows()):
+                    # specific check to ensure we don't go out of bounds if < 3 competitors
+                    if i < 3: 
+                        with cols_list[i]:
+                            st.markdown(f"""
+                            <div class="glass-panel" style="text-align: center; border-top: 4px solid #7c3aed;">
+                                <h3 style="margin-bottom: 0;">@{row["ownerUsername"]}</h3>
+                                <div style="font-size: 2rem; font-weight: 700; color: #10b981;">
+                                    {row["velocity_score"]:.1f}
+                                </div>
+                                <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b;">
+                                    Avg Velocity
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+            st.divider()
+            
+            # --- REEL CARDS SECTION ---
             cols = st.columns(4)
             for i, row in df.iterrows():
-                with cols[i % 4]: render_reel_card(row, f"C-{i+1}")
+                with cols[i % 4]:
+                    render_reel_card(row, f"C-{i+1}")
+                    
+        else:
+            st.info("No competitor data found. Check your Google Sheet or CSV mapping.")
 
 if __name__ == "__main__":
     main()
