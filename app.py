@@ -239,19 +239,10 @@ def show_reel_details(row):
     img_url = get_safe(row, ['displayUrl', 'thumbnail'], '')
     url = get_safe(row, ['url', 'permalink'], '#')
     
-    # Safe metrics (handling missing keys for competitors)
-    views = get_safe(row, ['views', 'videoPlayCount', 'igPlayCount', 'videoViewCount'], 0)
-    likes = get_safe(row, ['likesCount', 'likes'], None)
-    comments = get_safe(row, ['commentsCount', 'comments'], None)
-    shares = get_safe(row, ['reshareCount', 'shares'], None)
-    age = get_safe(row, ['age_hours'], 0)
-    velocity = get_safe(row, ['velocity_score'], 0)
-    duration = get_safe(row, ['videoDuration'], None)
-
     c1, c2, c3 = st.columns(3)
-    c1.metric("Viral Velocity", f"{float(velocity):.1f}")
-    c2.metric("Age", f"{float(age):.1f} hrs")
-    c3.metric("Views", format_k(views))
+    c1.metric("Viral Velocity", f"{float(get_safe(row, ['velocity_score'], 0)):.1f}")
+    c2.metric("Age", f"{float(get_safe(row, ['age_hours'], 0)):.1f} hrs")
+    c3.metric("Views", format_k(get_safe(row, ['views', 'videoPlayCount'], 0)))
 
     st.divider()
 
@@ -259,31 +250,26 @@ def show_reel_details(row):
     with col1:
         st.image(img_url, use_container_width=True)
         st.link_button("↗ Open in Instagram", url, use_container_width=True)
-        if duration:
-            st.caption(f"Duration: {float(duration):.1f}s")
     
     with col2:
         st.markdown("#### 📊 Engagement")
         sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("Likes", format_k(likes) if likes is not None else "N/A")
-        sc2.metric("Comments", format_k(comments) if comments is not None else "N/A")
-        sc3.metric("Shares", format_k(shares) if shares is not None else "N/A")
+        sc1.metric("Likes", format_k(get_safe(row, ['likesCount', 'likes'], 0)))
+        sc2.metric("Comments", format_k(get_safe(row, ['commentsCount'], 0)))
+        sc3.metric("Shares", format_k(get_safe(row, ['reshareCount'], 0)))
         
         st.markdown("#### 📝 Full Caption")
         st.caption(clean_json_text(caption))
         
         st.markdown("#### # Hashtags")
         tags = clean_json_text(get_safe(row, ['hashtags'], ''))
-        if tags and tags != '[]':
-            st.info(tags)
-        else:
-            st.caption("No hashtags found")
+        st.info(tags)
 
 def render_reel_card(row, rank):
     """Card with 9:16 Thumbnail and Analyze Button"""
     img_url = get_safe(row, ['displayUrl', 'thumbnail'], '')
     caption = clean_json_text(get_safe(row, ['caption', 'title'], 'No Caption'))
-    views = format_k(get_safe(row, ['views', 'videoPlayCount', 'videoViewCount'], 0))
+    views = format_k(get_safe(row, ['views', 'videoPlayCount'], 0))
     velocity = float(get_safe(row, ['velocity_score'], 0))
     
     badge_class = "badge-norm"
@@ -293,7 +279,7 @@ def render_reel_card(row, rank):
     html = f"""
 <div class="glass-panel" style="padding:0; height: 100%;">
     <div class="reel-thumbnail-container">
-        <img src="{img_url}" class="reel-img" referrerpolicy="no-referrer" onerror="this.src='https://via.placeholder.com/400x711?text=No+Image'">
+        <img src="{img_url}" class="reel-img" onerror="this.src='https://via.placeholder.com/400x711?text=No+Image'">
         <div class="overlay-top-left">#{rank}</div>
         <div class="overlay-top-right">
             <span class="stat-badge {badge_class}">⚡ {velocity:.1f}</span>
@@ -402,7 +388,7 @@ def render_script_card(row, idx):
                 
     
 
-                
+               
             with c2:
                 st.markdown("### 🧠 Strategic Insight")
                 
@@ -527,27 +513,27 @@ def main():
             with st.form("research_config"):
                 st.markdown("### 🎯 Parameters")
                 niche = st.text_input("Main Niche", value="Virat Kohli Cricket")
-                is_specific = st.checkbox("Is Specific Niche?", value=True)
-                creator_niche = st.text_input("Creator Niche (Sub-niche)", value="Cricket Analysis")
+                is_specific = True
+                creator_niche = niche
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    lang_script = st.selectbox("Script Lang", ["Hinglish", "English", "Hindi"], index=0)
-                    style = st.selectbox("Writing Style", ["Storytelling", "Analytical", "Hype", "Educational"], index=0)
+                    lang_script = st.text_input("Script Language", value="Hinglish")
+                    style = st.text_input("Writing Style", value="Let AI decide")
                 with c2:
-                    lang_text = st.selectbox("Text Lang", ["English", "Hindi"], index=0)
+                    lang_text = st.text_input("Text Language", value="English")
                     location = st.text_input("Location", value="India")
                 
                 st.markdown("### 🔍 Filters")
                 count = st.number_input("Reels to Scrape (Total)", min_value=10, max_value=100, value=30)
                 reels_filter = st.number_input("Reels Till Filter (Days)", min_value=1, max_value=365, value=30, help="Look back X days")
                 min_likes = st.number_input("Min Likes Filter", min_value=0, value=0)
-                competitors = st.text_area("Competitor Usernames (comma separated)", placeholder="espncricinfo, icc, bcci")
+                competitors = st.text_area("Competitor Usernames (space separated)", placeholder="espncricinfo icc bcci")
                 res_type = "Instagram"
 
                 if st.form_submit_button("🚀 Launch Research Agents"):
                     # Calculate per-hashtag limit (N8N uses limit per hashtag)
-                    limit_per_tag = max(1, count // 5)
+                    limit_per_tag = count
                     
                     params = {
                         "is_specific_niche": is_specific,
