@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import requests
+import html
 from datetime import datetime, timedelta
 import re
 import time
@@ -23,19 +24,26 @@ st.set_page_config(
 def apply_styling():
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
     :root {
-        --bg-dark: #0e1117;
-        --bg-card: #161b22;
-        --border-glass: 1px solid rgba(255, 255, 255, 0.1);
-        --accent-core: #7c3aed;
-        --accent-glow: rgba(124, 58, 237, 0.3);
+        --bg-dark: #08131a;
+        --bg-card: rgba(12, 24, 32, 0.84);
+        --border-glass: 1px solid rgba(148, 163, 184, 0.18);
+        --accent-core: #ff6b2c;
+        --accent-soft: #14b8a6;
+        --accent-glow: rgba(255, 107, 44, 0.25);
         --text-primary: #f8fafc;
         --text-secondary: #94a3b8;
     }
 
-    .stApp { background-color: var(--bg-dark); font-family: 'Inter', sans-serif; }
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 28%),
+            radial-gradient(circle at top right, rgba(255, 107, 44, 0.14), transparent 26%),
+            linear-gradient(180deg, #08131a 0%, #0d1821 100%);
+        font-family: 'Manrope', sans-serif;
+    }
 
     /* Glass Panel */
     .glass-panel {
@@ -44,16 +52,19 @@ def apply_styling():
         border-radius: 12px;
         padding: 1.25rem;
         margin-bottom: 1rem;
-        transition: transform 0.2s ease, border-color 0.2s ease;
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         position: relative;
         overflow: hidden;
         display: flex;
         flex-direction: column;
         height: 100%;
+        backdrop-filter: blur(18px);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
     }
     .glass-panel:hover {
-        border-color: rgba(124, 58, 237, 0.5);
+        border-color: rgba(255, 107, 44, 0.48);
         transform: translateY(-2px);
+        box-shadow: 0 22px 64px rgba(0, 0, 0, 0.24);
     }
 
     /* REEL SPECIFIC (9:16 Aspect) */
@@ -87,9 +98,9 @@ def apply_styling():
     }
     
     .badge-viral { background: #ec4899; box-shadow: 0 0 10px rgba(236, 72, 153, 0.4); }
-    .badge-trend { background: #f59e0b; }
-    .badge-norm { background: #10b981; }
-    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+    .badge-trend { background: #ff6b2c; }
+    .badge-norm { background: #14b8a6; }
+    .badge-blue { background: rgba(20, 184, 166, 0.12); color: #5eead4; border: 1px solid rgba(94, 234, 212, 0.22); }
 
     /* Script Blocks */
     .script-block { border-left: 2px solid #333; padding-left: 1rem; margin-bottom: 1rem; }
@@ -105,8 +116,19 @@ def apply_styling():
         color: white !important;
         border-radius: 8px;
     }
-    div[data-testid="stDialog"] { background-color: #1e293b; border: 1px solid #334155; }
-    div[data-testid="stMetricValue"] { color: #f8fafc; font-family: 'JetBrains Mono', monospace; }
+    div[data-testid="stDialog"] { background-color: #10212b; border: 1px solid #26404f; }
+    div[data-testid="stMetricValue"] { color: #f8fafc; font-family: 'Space Mono', monospace; }
+    div[data-testid="stMetricLabel"] { color: #9fb4c3; }
+    .stButton > button, .stLinkButton a {
+        border-radius: 999px !important;
+        border: 1px solid rgba(255, 107, 44, 0.35) !important;
+        background: linear-gradient(135deg, rgba(255, 107, 44, 0.18), rgba(20, 184, 166, 0.18)) !important;
+        color: #f8fafc !important;
+    }
+    .stButton > button:hover, .stLinkButton a:hover {
+        border-color: rgba(255, 107, 44, 0.65) !important;
+        box-shadow: 0 0 0 1px rgba(255, 107, 44, 0.12), 0 10px 24px rgba(255, 107, 44, 0.12) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -197,25 +219,32 @@ def parse_summary_points(text):
     return sections
 
 def escape_fstring(text):
-    """Escapes curly braces to prevent f-string errors"""
+    """Escapes HTML and curly braces for safe Streamlit HTML blocks."""
     if not isinstance(text, str): return text
-    return text.replace("{", "{{").replace("}", "}}")
+    safe = html.escape(text)
+    return safe.replace("{", "{{").replace("}", "}}")
 
 # -----------------------------------------------------------------------------
-# 4. WORKFLOW TRIGGER (N8N)
+# 4. WORKFLOW TRIGGER (AGENT API)
 # -----------------------------------------------------------------------------
 def load_credentials():
     try:
         with open('security.json', 'r') as f: return json.load(f)
-    except: return {"users": {"admin": "admin123"}, "n8n_api_url": ""}
+    except: return {"users": {"admin": "admin123"}, "agent_api_url": ""}
+
+
+def authenticate_user(username, password):
+    users = load_credentials().get("users", {})
+    return bool(username in users and users[username] == password)
+
 
 # -----------------------------------------------------------------------------
-# 4. WORKFLOW TRIGGER (N8N)
+# 4. WORKFLOW TRIGGER (AGENT API)
 # -----------------------------------------------------------------------------
 def trigger_workflow(params):
     creds = load_credentials()
-    url = creds.get('n8n_api_url', '')
-    if not url: return False, "N8N API URL not found in security.json"
+    url = creds.get('agent_api_url', '')
+    if not url: return False, "Agent API URL not found in security.json"
     
     try:
         # CORRECTION: Do not wrap in 'body'. Send flat JSON.
@@ -225,10 +254,9 @@ def trigger_workflow(params):
         }
         
         try:
-            # Added verify=False in case of SSL cert issues, remove if not needed
             requests.post(url, json=payload, timeout=5, headers={'Content-Type': 'application/json'})
         except requests.exceptions.Timeout:
-            # n8n might take time to process, but the trigger happened
+            # Agent might take time to process, but the trigger happened
             pass 
             
         return True, "Workflow initiated successfully"
@@ -469,10 +497,12 @@ def main():
             with st.form("login"):
                 u = st.text_input("ID")
                 p = st.text_input("Key", type="password")
-                if st.form_submit_button("Access Terminal"):
-                    if u == "admin" and p == "admin123":
+                if st.form_submit_button("Access"):
+                    if authenticate_user(u, p):
                         st.session_state.authenticated = True
                         st.rerun()
+                    else:
+                        st.error("Invalid credentials.")
         return
 
     # --- POLLING LOGIC ---
@@ -504,9 +534,9 @@ def main():
                 st.cache_data.clear()
                 time.sleep(2)
                 st.rerun()
-            elif elapsed > 1500: # 5 min timeout
+            elif elapsed > 300:
                 st.session_state.polling = False
-                st.error("⚠️ Research timed out. Please check N8N.")
+                st.error("⚠️ Research timed out. Please check Agent Backend.")
             else:
                 time.sleep(15) # Wait before re-checking
                 st.rerun()
@@ -521,32 +551,8 @@ def main():
             with st.form("research_config"):
                 st.markdown("### 🎯 Parameters")
                 niche = st.text_input("Main Niche", value="Virat Kohli Cricket")
-                is_specific = True
-                creator_niche = niche
-                
-                c1, c2 = st.columns(2)
-                with c1:
-                    lang_script = st.text_input("Script Language", value="Hinglish")
-                    style = st.text_input("Writing Style", value="Let AI decide")
-                with c2:
-                    lang_text = st.text_input("Text Language", value="English")
-                    location = st.text_input("Location", value="India")
-                
-                st.markdown("### 🔍 Filters")
-                count = st.slider("Reels to Scrape (Total)", min_value=10, max_value=500, value=30,  step=5)
-                reels_filter = st.number_input("Reels Till Filter (Days)", min_value=1, max_value=365, value=30, help="Look back X days")
-                min_likes = st.number_input("Min Likes Filter", min_value=0, value=0)
-                competitors = st.text_area("Competitor Usernames (space separated)", placeholder="espncricinfo icc bcci")
-                res_type = "Instagram"
-
-                if st.form_submit_button("🚀 Launch Research Agents"):
-                    # Calculate per-hashtag limit (N8N uses limit per hashtag)
-                    limit_per_tag = count
-                    
-                    params = {
-                        "is_specific_niche": is_specific,
-                        "creator_niche": creator_niche,
-                        "niche": niche,
+                creator_niche = st.text_input("Creator Positioning", value=niche)
+                is_specific = st.toggle("Treat niche as highly specific", value=True)
                         "language_of_script": lang_script,
                         "language_of_text": lang_text,
                         "writing_style": style,
@@ -558,7 +564,7 @@ def main():
                         "competitorListUsernames": competitors
                     }
                     
-                    with st.spinner("Transmitting coordinates to N8N..."):
+                    with st.spinner("Transmitting coordinates to Agents..."):
                         success, msg = trigger_workflow(params)
                         if success:
                             st.session_state.polling = True
