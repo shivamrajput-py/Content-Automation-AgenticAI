@@ -16,38 +16,38 @@ The repository is designed for teams that want to run the pipelines locally, sch
 
 ```text
 ResearchTool/
- app.py
- README.md
- requirements.txt
- .env.example
- .gitignore
- dashboard_config.example.json
- common/
-    clients.py
-    llm.py
-    logging.py
-    settings.py
-    utils.py
- content_research_automation/
-    graph.py
-    main.py
-    prompts.py
-    schemas.py
- linkedin_twitter_automation/
-    graph.py
-    main.py
-    prompts.py
-    schemas.py
- instagram_reel_automation/
-    graph.py
-    main.py
-    prompts.py
-    schemas.py
- examples/
-     inputs/
-         content_research.json
-         linkedin_twitter.json
-         instagram_reel.json
+|- app.py
+|- README.md
+|- requirements.txt
+|- .env.example
+|- .gitignore
+|- dashboard_config.example.json
+|- common/
+|  |- clients.py
+|  |- llm.py
+|  |- logging.py
+|  |- settings.py
+|  `- utils.py
+|- content_research_automation/
+|  |- graph.py
+|  |- main.py
+|  |- prompts.py
+|  `- schemas.py
+|- linkedin_twitter_automation/
+|  |- graph.py
+|  |- main.py
+|  |- prompts.py
+|  `- schemas.py
+|- instagram_reel_automation/
+|  |- graph.py
+|  |- main.py
+|  |- prompts.py
+|  `- schemas.py
+`- examples/
+   `- inputs/
+      |- content_research.json
+      |- linkedin_twitter.json
+      `- instagram_reel.json
 ```
 
 ## Core capabilities
