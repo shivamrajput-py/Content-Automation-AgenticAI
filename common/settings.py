@@ -1,9 +1,46 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field
+
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ModuleNotFoundError:
+    def SettingsConfigDict(**kwargs):
+        return kwargs
+
+    class BaseSettings(BaseModel):
+        model_config = {"extra": "ignore"}
+
+        def __init__(self, **data):
+            merged = {**self._load_env_values(), **data}
+            super().__init__(**merged)
+
+        @classmethod
+        def _load_env_values(cls) -> dict[str, str]:
+            config = getattr(cls, "model_config", {}) or {}
+            env_values: dict[str, str] = {}
+
+            env_file = config.get("env_file")
+            if env_file:
+                env_path = Path(env_file)
+                if env_path.exists():
+                    for line in env_path.read_text(encoding="utf-8").splitlines():
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith("#") or "=" not in stripped:
+                            continue
+                        key, value = stripped.split("=", 1)
+                        env_values[key.strip()] = value.strip()
+
+            env_values.update(os.environ)
+            loaded: dict[str, str] = {}
+            for field_name in cls.model_fields:
+                env_name = field_name.upper()
+                if env_name in env_values:
+                    loaded[field_name] = env_values[env_name]
+            return loaded
 
 
 class CommonSettings(BaseSettings):
@@ -41,9 +78,7 @@ class CommonSettings(BaseSettings):
     request_timeout_seconds: int = 90
     poll_interval_seconds: int = 15
     max_poll_attempts: int = 24
-    artifact_root: Path = Field(
-        default_factory=lambda: Path.cwd() / "artifacts",
-    )
+    artifact_root: Path = Field(default_factory=lambda: Path.cwd() / "artifacts")
 
 
 class MissingConfigurationError(RuntimeError):

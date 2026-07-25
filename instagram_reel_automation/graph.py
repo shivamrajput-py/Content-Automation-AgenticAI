@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from ..common.clients import (
+from common.clients import (
     ApifyClient,
     ElevenLabsClient,
     GoogleSheetsRepository,
@@ -16,9 +16,9 @@ from ..common.clients import (
     QuickReelClient,
     TemporaryUploadClient,
 )
-from ..common.llm import build_chat_model
-from ..common.settings import CommonSettings, MissingConfigurationError
-from ..common.utils import (
+from common.llm import build_chat_model
+from common.settings import CommonSettings, MissingConfigurationError
+from common.utils import (
     analyze_instagram_reels,
     dedupe_preserve_order,
     poll_until,
@@ -204,12 +204,16 @@ def build_graph(settings: CommonSettings):
     def generate_audio(state: InstagramAutomationState) -> InstagramAutomationState:
         request = InstagramAutomationInput.model_validate(state["request"])
         script = InstagramScriptPackage.model_validate(state["script_package"])
+        if not request.voice_id:
+            raise MissingConfigurationError("voice_id is required for the Instagram reel pipeline.")
         audio_bytes = tts.synthesize(script.full_text, request.voice_id)
         audio_url = uploader.upload_bytes(f"{state['run_id']}.mp3", audio_bytes)
         return {"audio_url": audio_url}
 
     def generate_avatar_video(state: InstagramAutomationState) -> InstagramAutomationState:
         request = InstagramAutomationInput.model_validate(state["request"])
+        if not request.avatar_id:
+            raise MissingConfigurationError("avatar_id is required for the Instagram reel pipeline.")
         video_id = heygen.generate_avatar_video(state["audio_url"], request.avatar_id)
         status = poll_until(
             lambda: heygen.get_video_status(video_id),
@@ -423,3 +427,6 @@ def build_graph(settings: CommonSettings):
     builder.add_edge("persist_artifact", END)
 
     return builder.compile(checkpointer=MemorySaver())
+
+
+

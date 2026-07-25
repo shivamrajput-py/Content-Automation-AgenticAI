@@ -1,0 +1,15 @@
+{
+  "creator_niche": "AI and technology news creator for Indian audiences",
+  "niche": "AI product updates",
+  "is_specific_niche": true,
+  "language_of_script": "Hinglish",
+  "language_of_text": "English",
+  "writing_style": "direct, data-backed, practical",
+  "location": "India",
+  "noOfReelsToScrape": 25,
+  "reelsTill_Filter": 30,
+  "minLikesReel_Filter": 0,
+  "competitorListUsernames": ["openai", "googledeepmind", "midjourney"],
+  "type": "reels",
+  "persist_to_sheet": false
+}

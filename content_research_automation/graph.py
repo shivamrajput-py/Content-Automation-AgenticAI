@@ -7,10 +7,10 @@ from typing import Any, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from ..common.clients import ApifyClient, GoogleSheetsRepository
-from ..common.llm import build_chat_model
-from ..common.settings import CommonSettings
-from ..common.utils import (
+from common.clients import ApifyClient, GoogleSheetsRepository
+from common.llm import build_chat_model
+from common.settings import CommonSettings
+from common.utils import (
     analyze_instagram_reels,
     as_list,
     dedupe_preserve_order,
@@ -260,3 +260,5 @@ def build_graph(settings: CommonSettings):
     builder.add_edge("persist_artifact", END)
 
     return builder.compile(checkpointer=MemorySaver())
+
+

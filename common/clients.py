@@ -5,10 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import gspread
 import httpx
-from openai import OpenAI
-from requests_oauthlib import OAuth1Session
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from .settings import CommonSettings, MissingConfigurationError
@@ -95,6 +92,8 @@ class GoogleSheetsRepository:
 
         raw = self._settings.google_service_account_json
         credentials_info = json.loads(raw) if raw.strip().startswith("{") else json.loads(Path(raw).read_text(encoding="utf-8"))
+        import gspread
+
         return gspread.service_account_from_dict(credentials_info)
 
     def _worksheet(self, spreadsheet_id: str, worksheet_ref: str):
@@ -121,6 +120,8 @@ class OpenRouterImageClient:
     def __init__(self, settings: CommonSettings) -> None:
         if not settings.openrouter_api_key:
             raise MissingConfigurationError("OPENROUTER_API_KEY is required for image generation.")
+        from openai import OpenAI
+
         self._client = OpenAI(api_key=settings.openrouter_api_key, base_url=settings.openrouter_base_url)
         self._settings = settings
 
@@ -346,6 +347,8 @@ class TwitterPublisher:
         ]
         if any(value is None for value in required):
             raise MissingConfigurationError("Twitter OAuth 1.0a user credentials are required for posting.")
+        from requests_oauthlib import OAuth1Session
+
         self._session = OAuth1Session(
             settings.twitter_consumer_key,
             client_secret=settings.twitter_consumer_secret,

@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from ..common.logging import configure_logging
-from ..common.settings import CommonSettings
+from common.logging import configure_logging
+from common.settings import CommonSettings
 from .graph import build_graph
-from .schemas import SocialAutopostInput
+from .schemas import InstagramAutomationInput
 
 
 def _load_payload(path: str | None) -> dict:
@@ -19,17 +19,17 @@ def _load_payload(path: str | None) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the LinkedIn/Twitter autopost LangGraph workflow.")
+    parser = argparse.ArgumentParser(description="Run the Instagram automation LangGraph workflow.")
     parser.add_argument("--input", help="Path to a JSON input file.")
     parser.add_argument("--thread-id", default=str(uuid4()))
     args = parser.parse_args()
 
     configure_logging()
     settings = CommonSettings()
-    payload = SocialAutopostInput.model_validate(_load_payload(args.input))
+    payload = InstagramAutomationInput.model_validate(_load_payload(args.input))
     graph = build_graph(settings)
     result = graph.invoke(
-        {"request": payload.model_dump(mode="json")},
+        {"request": payload.model_dump(mode="json", by_alias=True)},
         config={"configurable": {"thread_id": args.thread_id}},
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -37,3 +37,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

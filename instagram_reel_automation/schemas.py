@@ -23,8 +23,8 @@ class InstagramAutomationInput(BaseModel):
     remove_silence_parts: bool = False
     subtitle_template: str = "spotlight"
     subtitle_font_size: int = 48
-    avatar_id: str = "13661b81f91a4e7fa458c6e0b4a8b00c"
-    voice_id: str = "8OPtOKmpfhvnN2wLH7oo"
+    avatar_id: str = ""
+    voice_id: str = ""
     publish_to_instagram: bool = False
     instagram_account_id: str | None = None
     dry_run: bool = True
@@ -74,3 +74,4 @@ class InstagramScriptPackage(BaseModel):
 class QualityReview(BaseModel):
     approved: bool
     feedback: str
+

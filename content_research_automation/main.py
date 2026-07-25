@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from ..common.logging import configure_logging
-from ..common.settings import CommonSettings
+from common.logging import configure_logging
+from common.settings import CommonSettings
 from .graph import build_graph
-from .schemas import InstagramAutomationInput
+from .schemas import ContentResearchInput
 
 
 def _load_payload(path: str | None) -> dict:
@@ -19,14 +19,14 @@ def _load_payload(path: str | None) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Instagram automation LangGraph workflow.")
+    parser = argparse.ArgumentParser(description="Run the Content Research LangGraph workflow.")
     parser.add_argument("--input", help="Path to a JSON input file.")
     parser.add_argument("--thread-id", default=str(uuid4()))
     args = parser.parse_args()
 
     configure_logging()
     settings = CommonSettings()
-    payload = InstagramAutomationInput.model_validate(_load_payload(args.input))
+    payload = ContentResearchInput.model_validate(_load_payload(args.input))
     graph = build_graph(settings)
     result = graph.invoke(
         {"request": payload.model_dump(mode="json", by_alias=True)},
@@ -37,3 +37,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

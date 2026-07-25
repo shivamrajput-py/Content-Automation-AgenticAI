@@ -1,0 +1,13 @@
+.env
+dashboard_config.json
+artifacts/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+
+.env.example.old
+env_example.tmp

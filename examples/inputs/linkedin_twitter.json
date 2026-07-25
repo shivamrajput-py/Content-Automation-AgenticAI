@@ -1,0 +1,11 @@
+{
+  "creator_niche": "AI and technology news creator for Indian audiences",
+  "niche": "AI product updates",
+  "language_of_text": "English",
+  "writing_style": "clear, authoritative, shareable",
+  "location": "India",
+  "dry_run": true,
+  "publish_to_twitter": false,
+  "publish_to_linkedin": false,
+  "persist_to_sheet": false
+}
